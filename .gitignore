@@ -1,0 +1,19 @@
+# Xcode
+.DS_Store
+build/
+DerivedData/
+
+# API Keys
+Secrets.plist
+
+*.xcworkspace
+*.xcuserstate
+
+# Logs
+*.log
+*.xcactivitylog
+*.crash
+
+# Temporary files
+*.tmp
+*.temp
