@@ -9,11 +9,9 @@ import SwiftUI
 
 struct AsyncImageView: View {
     @StateObject private var loader: ImageLoader
-    private let placeholder: Image
 
     init(url: URL, placeholder: Image = Image(systemName: "photo")) {
         _loader = StateObject(wrappedValue: ImageLoader(url: url))
-        self.placeholder = placeholder
     }
 
     var body: some View {
@@ -27,8 +25,7 @@ struct AsyncImageView: View {
                 Image(uiImage: image)
                     .resizable()
             } else {
-                placeholder
-                    .resizable()
+                Color.clear
             }
         }
     }

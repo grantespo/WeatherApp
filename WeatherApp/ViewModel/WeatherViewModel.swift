@@ -14,8 +14,6 @@ class WeatherViewModel: ObservableObject {
     @Published var isLoading = false
     @Published var errorMessage: String? = nil
     @Published var locationInput: String = ""
-    @Published var isFetchingLocation = false
-    private var locationUpdated = false // Flag to track if the location was updated automatically
     
     @Published var selectedDate = Date()
     
@@ -27,16 +25,20 @@ class WeatherViewModel: ObservableObject {
             .receive(on: DispatchQueue.main)
             .sink { [weak self] zipCode in
                 guard let self = self else { return }
-                self.locationUpdated = true // Set the flag before updating the zip code
+                var shouldFetch = locationInput != zipCode
                 self.locationInput = zipCode
+                if shouldFetch {
+                    fetchWeather()
+                }
             }
             .store(in: &cancellables)
         
         locationManager.$locationError
             .receive(on: DispatchQueue.main)
             .sink { [weak self] error in
+                guard let self = self else { return }
                 if let error = error {
-                    self?.errorMessage = error
+                    self.errorMessage = error
                 }
             }
             .store(in: &cancellables)
@@ -48,7 +50,6 @@ class WeatherViewModel: ObservableObject {
         if resetDay {
             selectedDate = Date()
         }
-        print("fetchWeather called")
         guard !locationInput.isEmpty else {
             errorMessage = "Please enter a valid city or zip code."
             return
@@ -65,7 +66,7 @@ class WeatherViewModel: ObservableObject {
         }
         
         guard let geocodingUrl = URL(string: geocodingUrlString) else {
-            print("Invalid URL")
+            setError(error: "Invalid URL")
             return
         }
         
@@ -74,7 +75,7 @@ class WeatherViewModel: ObservableObject {
         URLSession.shared.dataTask(with: geocodingUrl) { data, response, error in
             if let networkError = error {
                 DispatchQueue.main.async {
-                    self.errorMessage = "Network error: \(networkError.localizedDescription)"
+                    self.setError(error: "Network error: \(networkError.localizedDescription)")
                     self.isLoading = false
                 }
                 return
@@ -106,22 +107,17 @@ class WeatherViewModel: ObservableObject {
     }
         
     private func fetchWeatherForCoordinates(lat: Double, lon: Double, locationName: String) {
-            print("fetchWeatherForCoordinates called")
             let dt = Int(selectedDate.timeIntervalSince1970)
             
             guard let url = URL(string: "https://api.openweathermap.org/data/3.0/onecall/timemachine?lat=\(lat)&lon=\(lon)&dt=\(dt)&appid=\(apiKey)&units=imperial") else {
-                print("Invalid URL")
+                self.setError(error: "Invalid URL")
                 return
             }
             
             URLSession.shared.dataTask(with: url) { data, response, error in
-                DispatchQueue.main.async {
-                    self.isLoading = false
-                }
-                
                 if let networkError = error {
                     DispatchQueue.main.async {
-                        self.errorMessage = "Network error: \(networkError.localizedDescription)"
+                        self.setError(error: "Network error: \(networkError.localizedDescription)")
                     }
                     return
                 }
@@ -138,6 +134,7 @@ class WeatherViewModel: ObservableObject {
                             self.currentWeather = forecast
                             self.locationName = locationName
                             self.errorMessage = nil
+                            self.isLoading = false
                         }
                     } else {
                         self.setError(error: "No forecast available for selected date")
@@ -157,6 +154,7 @@ class WeatherViewModel: ObservableObject {
             self.errorMessage = error
             self.currentWeather = nil
             self.locationName = nil
+            self.isLoading = false
         }
     }
 }

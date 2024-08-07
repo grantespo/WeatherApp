@@ -19,7 +19,6 @@ struct ContentView: View {
                     HStack {
                         TextField("Enter City or Zip Code", text: $viewModel.locationInput)
                             .textFieldStyle(RoundedBorderTextFieldStyle())
-                            .keyboardType(.numberPad)
                             .padding()
                         Button(action: {
                             viewModel.fetchWeather()

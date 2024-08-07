@@ -48,11 +48,6 @@ struct WeatherView: View {
                         WeatherDetailCard(weather: weather)
                     }
                     .padding()
-                } else {
-                    Text("Please enter a zipcode to see the weather.")
-                        .font(.title2)
-                        .foregroundColor(.white)
-                        .padding()
                 }
             }
         }
