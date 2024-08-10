@@ -35,15 +35,11 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         let geocoder = CLGeocoder()
         geocoder.reverseGeocodeLocation(location) { placemarks, error in
             DispatchQueue.main.async {
-                if let error = error {
-                    self.locationError = "Failed to get postal code: \(error.localizedDescription)"
-                    return
-                }
-                
                 if let placemark = placemarks?.first, let postalCode = placemark.postalCode {
                     self.zipCode = postalCode
                 } else {
                     self.locationError = "Failed to get postal code"
+                    print("Failed to get postal code: \(error?.localizedDescription ?? "")")
                 }
             }
         }
@@ -51,7 +47,8 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
     
     func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
         DispatchQueue.main.async {
-            self.locationError = "Failed to get user location: \(error.localizedDescription)"
+            self.locationError = "Failed to get user location"
+            print("Failed to get user location: \(error.localizedDescription)")
         }
     }
     

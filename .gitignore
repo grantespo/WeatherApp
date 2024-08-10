@@ -3,11 +3,12 @@
 build/
 DerivedData/
 
-# API Keys
-Secrets.plist
-
 *.xcworkspace
 *.xcuserstate
+*.xcuserdatad/
+*.xcuserdata/
+*.xcdebugger/
+*.xcodeproj/xcshareddata/
 
 # Logs
 *.log
@@ -17,3 +18,6 @@ Secrets.plist
 # Temporary files
 *.tmp
 *.temp
+
+# API Keys
+Secrets.plist

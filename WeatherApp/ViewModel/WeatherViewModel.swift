@@ -19,17 +19,16 @@ class WeatherViewModel: ObservableObject {
     
     private let locationManager = LocationManager()
     private var cancellables: Set<AnyCancellable> = []
+    private let networkClient = NetworkClient()
     
     init() {
         locationManager.$zipCode
             .receive(on: DispatchQueue.main)
+            .filter { [weak self] in $0 != self?.locationInput }
             .sink { [weak self] zipCode in
                 guard let self = self else { return }
-                var shouldFetch = locationInput != zipCode
                 self.locationInput = zipCode
-                if shouldFetch {
-                    fetchWeather()
-                }
+                self.fetchWeather()
             }
             .store(in: &cancellables)
         
@@ -45,24 +44,22 @@ class WeatherViewModel: ObservableObject {
     }
     
     let apiKey = Config.apiKey
-        
+    
     func fetchWeather(resetDay: Bool = true) {
         if resetDay {
             selectedDate = Date()
         }
-        guard !locationInput.isEmpty else {
+        guard !locationInput.isEmpty,
+        !(locationInput.allSatisfy({ $0.isNumber }) && locationInput.count != 5) else {
             errorMessage = "Please enter a valid city or zip code."
             return
         }
         
-        // Fetch coordinates for the given city or zip code
         let geocodingUrlString: String
         if locationInput.allSatisfy({ $0.isNumber }) {
-            // Input is a zip code
-            geocodingUrlString = "https://api.openweathermap.org/geo/1.0/zip?zip=\(locationInput),US&appid=\(apiKey)"
+            geocodingUrlString = APIConstants.geoBaseURL + "zip?zip=\(locationInput),US&appid=\(apiKey)"
         } else {
-            // Input is a city name
-            geocodingUrlString = "https://api.openweathermap.org/geo/1.0/direct?q=\(locationInput),US&appid=\(apiKey)"
+            geocodingUrlString = APIConstants.geoBaseURL + "direct?q=\(locationInput),US&appid=\(apiKey)"
         }
         
         guard let geocodingUrl = URL(string: geocodingUrlString) else {
@@ -72,78 +69,76 @@ class WeatherViewModel: ObservableObject {
         
         isLoading = true
         
-        URLSession.shared.dataTask(with: geocodingUrl) { data, response, error in
-            if let networkError = error {
-                DispatchQueue.main.async {
-                    self.setError(error: "Network error: \(networkError.localizedDescription)")
-                    self.isLoading = false
-                }
-                return
-            }
-            
-            guard let data = data else {
-                self.setError(error: "No data received")
-                return
-            }
-            
-            do {
-                if self.locationInput.allSatisfy({ $0.isNumber }) {
-                    // Input was a zip code
-                    let geoData = try JSONDecoder().decode(Geo.self, from: data)
+        if locationInput.allSatisfy({ $0.isNumber }) {
+            // Input is a zip code, expecting a single Geo object
+            networkClient.fetchData(from: geocodingUrl, as: Geo.self)
+                .sink(receiveCompletion: { [weak self] completion in
+                    guard let self = self else { return }
+                    switch completion {
+                    case .failure(let error):
+                        self.setError(error: "Error: \(error.localizedDescription)")
+                    case .finished:
+                        break
+                    }
+                }, receiveValue: { [weak self] geoData in
+                    guard let self = self else { return }
                     self.fetchWeatherForCoordinates(lat: geoData.lat, lon: geoData.lon, locationName: geoData.name)
-                } else {
-                    // Input was a city name
-                    let geoDataArray = try JSONDecoder().decode([Geo].self, from: data)
+                })
+                .store(in: &cancellables)
+        } else {
+            // Input is a city name, expecting an array of Geo objects
+            networkClient.fetchData(from: geocodingUrl, as: [Geo].self)
+                .sink(receiveCompletion: { [weak self] completion in
+                    guard let self = self else { return }
+                    switch completion {
+                    case .failure(let error):
+                        self.setError(error: "Error: \(error.localizedDescription)")
+                    case .finished:
+                        break
+                    }
+                }, receiveValue: { [weak self] geoDataArray in
+                    guard let self = self else { return }
                     if let geoData = geoDataArray.first {
                         self.fetchWeatherForCoordinates(lat: geoData.lat, lon: geoData.lon, locationName: geoData.name)
                     } else {
                         self.setError(error: "Invalid city name")
                     }
-                }
-            } catch {
-                self.setError(error: "Error decoding geo data: \(error.localizedDescription)")
-            }
-        }.resume()
-    }
-        
-    private func fetchWeatherForCoordinates(lat: Double, lon: Double, locationName: String) {
-            let dt = Int(selectedDate.timeIntervalSince1970)
-            
-            guard let url = URL(string: "https://api.openweathermap.org/data/3.0/onecall/timemachine?lat=\(lat)&lon=\(lon)&dt=\(dt)&appid=\(apiKey)&units=imperial") else {
-                self.setError(error: "Invalid URL")
-                return
-            }
-            
-            URLSession.shared.dataTask(with: url) { data, response, error in
-                if let networkError = error {
-                    DispatchQueue.main.async {
-                        self.setError(error: "Network error: \(networkError.localizedDescription)")
-                    }
-                    return
-                }
-                
-                guard let data = data else {
-                    self.setError(error: "No data received")
-                    return
-                }
-                
-                do {
-                    let weatherResponse = try JSONDecoder().decode(WeatherResponse.self, from: data)
-                    if let forecast = weatherResponse.data.first(where: { Calendar.current.isDate(Date(timeIntervalSince1970: TimeInterval($0.dt)), inSameDayAs: self.selectedDate) }) {
-                        DispatchQueue.main.async {
-                            self.currentWeather = forecast
-                            self.locationName = locationName
-                            self.errorMessage = nil
-                            self.isLoading = false
-                        }
-                    } else {
-                        self.setError(error: "No forecast available for selected date")
-                    }
-                } catch {
-                    self.setError(error: "Error decoding weather data: \(error.localizedDescription)")
-                }
-            }.resume()
+                })
+                .store(in: &cancellables)
         }
+    }
+    
+    private func fetchWeatherForCoordinates(lat: Double, lon: Double, locationName: String) {
+        let dt = Int(selectedDate.timeIntervalSince1970)
+        
+        guard let url = URL(string: APIConstants.onecall3BaseURL + "timemachine?lat=\(lat)&lon=\(lon)&dt=\(dt)&appid=\(apiKey)&units=imperial") else {
+            self.setError(error: "Invalid URL")
+            return
+        }
+        
+        networkClient.fetchData(from: url, as: WeatherResponse.self)
+            .sink(receiveCompletion: { [weak self] completion in
+                guard let self = self else { return }
+                switch completion {
+                case .failure(let error):
+                    self.setError(error: "Error: \(error.localizedDescription)")
+                case .finished:
+                    break
+                }
+            }, receiveValue: { [weak self] weatherResponse in
+                guard let self = self else { return }
+                
+                if let forecast = weatherResponse.data.first(where: { Calendar.current.isDate(Date(timeIntervalSince1970: TimeInterval($0.dt)), inSameDayAs: self.selectedDate) }) {
+                    self.currentWeather = forecast
+                    self.locationName = locationName
+                    self.errorMessage = nil
+                    self.isLoading = false
+                } else {
+                    self.setError(error: "No forecast available for selected date")
+                }
+            })
+            .store(in: &cancellables)
+    }
     
     func requestLocation() {
         locationManager.requestLocation()

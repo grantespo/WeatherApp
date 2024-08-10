@@ -30,9 +30,9 @@ struct WeatherData: Codable {
     let pressure: Int
     let humidity: Int
     let dewPoint: Double
-    let uvi: Double
+    let uvi: Double?
     let clouds: Int
-    let visibility: Int
+    let visibility: Int?
     let windSpeed: Double
     let windDeg: Int
     let weather: [Weather]
